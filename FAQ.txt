@@ -1,0 +1,205 @@
+================================================================================
+PODCAST STUDIO — FREQUENTLY ASKED QUESTIONS & TROUBLESHOOTING GUIDE (FAQ)
+================================================================================
+
+This document details:
+PART 1: Real technical issues faced during development and how they were resolved.
+PART 2: Common user operational issues, edge cases, and their resolutions.
+
+================================================================================
+PART 1: TECHNICAL ISSUES FACED & APPLIED CODE RESOLUTIONS
+================================================================================
+
+--------------------------------------------------------------------------------
+Q1: Why did I see "[Errno 8] nodename nor servname provided, or not known" 
+    during script generation?
+--------------------------------------------------------------------------------
+CAUSE:
+This is a DNS lookup failure. It happens when the Uvicorn server runs inside a 
+sandboxed environment (such as an IDE agent sandbox or container without 
+network bridging) where outbound DNS resolution and internet access are blocked. 
+When the server tried to contact Google Gemini API at 
+`generativelanguage.googleapis.com` or Edge-TTS, the local resolver returned 
+Errno 8.
+
+RESOLUTION:
+1. When launched via agent tools, the server process must run with network 
+   access enabled (BypassSandbox: true).
+2. For end users: Always launch the server using `./run_studio.sh` in your 
+   regular Mac/Linux Terminal. Native terminal processes have standard network 
+   access and never suffer from sandbox DNS blocks.
+
+--------------------------------------------------------------------------------
+Q2: What caused "TypeError: open() got an unexpected keyword argument 'metadata_errors'"
+    in faster-whisper?
+--------------------------------------------------------------------------------
+CAUSE:
+Faster-whisper's audio decoder (`faster_whisper/audio.py`) historically passed 
+`metadata_errors="ignore"` to PyAV's `av.open()` method. 
+In PyAV version 19.x (released in 2026), the deprecated `metadata_errors` keyword 
+argument was completely removed from `av.open()`, causing a hard crash whenever 
+Whisper decoded an audio or video stream.
+
+RESOLUTION:
+In `core/transcribe.py`, we implemented a zero-overhead compatibility monkey-patch 
+before Whisper initializes:
+```python
+import av
+_orig_av_open = av.open
+def _safe_av_open(*args, **kwargs):
+    kwargs.pop("metadata_errors", None)
+    return _orig_av_open(*args, **kwargs)
+av.open = _safe_av_open
+```
+This safely strips the unsupported argument, allowing `faster-whisper` to decode 
+all media seamlessly with PyAV 19+ without needing to downgrade packages.
+
+--------------------------------------------------------------------------------
+Q3: Why did `youtube-transcript-api` throw "AttributeError: type object 
+    'YouTubeTranscriptApi' has no attribute 'list_transcripts'"?
+--------------------------------------------------------------------------------
+CAUSE:
+In `youtube-transcript-api` version 1.2+ (2026 release), the API transitioned 
+from static class methods to instance methods (`api = YouTubeTranscriptApi(); 
+api.fetch(video_id)`), making legacy static calls fail.
+
+RESOLUTION:
+In `core/ingest.py`, `fetch_youtube_captions()` was updated to handle both 
+interfaces:
+It first attempts the new instance method `YouTubeTranscriptApi().fetch(video_id)`, 
+and gracefully falls back to static methods if an older version is present. 
+Snippets are extracted with exact timestamp ranges and assembled cleanly.
+
+--------------------------------------------------------------------------------
+Q4: Why did Whisper fail with "LocalEntryNotFoundError" when offline?
+--------------------------------------------------------------------------------
+CAUSE:
+By default, `faster-whisper` checks HuggingFace Hub on initial load to see if a 
+newer snapshot exists. If an internet connection or HuggingFace access is 
+unavailable, HuggingFace Hub throws a `ConnectError` or `LocalEntryNotFoundError`, 
+even if the weights were already downloaded.
+
+RESOLUTION:
+In `core/transcribe.py`, `get_whisper_model()` now scans the local HuggingFace 
+hub cache directory (`~/.cache/huggingface/hub/models--Systran--faster-whisper-*`) 
+for existing downloaded snapshots. If a local snapshot directory exists, it loads 
+directly from the absolute local path. This enables 100% offline transcription 
+with zero network pinging.
+
+--------------------------------------------------------------------------------
+Q5: How was the deprecation of `google.generativeai` handled?
+--------------------------------------------------------------------------------
+CAUSE:
+Google officially deprecated the legacy `google.generativeai` library in favor of 
+the modern `google-genai` SDK.
+
+RESOLUTION:
+In `core/model_router.py`, the code uses `from google import genai` and 
+`from google.genai import types`. The client is initialized with 
+`client = genai.Client(api_key=api_key)`, and models are dynamically discovered 
+using `client.models.list()`.
+
+================================================================================
+PART 2: USER OPERATIONAL ISSUES & TROUBLESHOOTING
+================================================================================
+
+--------------------------------------------------------------------------------
+Q6: What happens if Google Gemini hits a rate limit (HTTP 429)?
+--------------------------------------------------------------------------------
+SYMPTOMS:
+You receive an alert or banner: "Rate limit detected. Automatically switched..."
+
+HOW THE APP HANDLES IT:
+Google's free-tier has rate limits on Requests-Per-Minute (RPM). Rather than 
+failing your podcast generation, our Dynamic Model Router automatically:
+1. Detects the `429 (ResourceExhausted)` error.
+2. Identifies the next best free model from the dynamic pool (e.g., switches 
+   from `gemini-2.0-flash` to `gemini-1.5-flash` or `gemini-1.5-flash-8b`).
+3. Replays your prompt immediately without requiring you to do anything.
+4. Displays a non-intrusive status banner indicating which model delivered your 
+   script.
+
+RESOLUTION IF ALL MODELS ARE EXHAUSTED:
+If you have made a very large number of requests in a single minute across all 
+models, wait 30–60 seconds for the free-tier quota window to reset, then click 
+"Generate Podcast Script" again.
+
+--------------------------------------------------------------------------------
+Q7: A YouTube link shows "No Public Captions Available". What can I do?
+--------------------------------------------------------------------------------
+CAUSE:
+Some YouTube creators disable closed captions, or the video may be music-only.
+
+OPTIONS PROVIDED:
+Podcast Studio will never silently bypass access rules or scrape forbidden content. 
+Instead, it offers two compliant options:
+Option A: Click "Extract Audio & Transcribe Locally". If public audio is accessible, 
+          it will stream just the audio track and transcribe it locally on your 
+          Mac using Faster-Whisper.
+Option B: Click "Upload Video File Instead". If you own the video or have the 
+          media file on disk, drag-and-drop it directly into the "Upload" tab.
+
+--------------------------------------------------------------------------------
+Q8: Video or audio upload is taking a long time to transcribe. How can I speed 
+    it up?
+--------------------------------------------------------------------------------
+EXPLANATION:
+Transcription speed depends on your Mac's hardware (Apple Silicon M-series vs. 
+Intel CPU) and the Whisper model size you selected:
+- `tiny` model (~75MB): Transcribes 10 minutes of audio in ~5–10 seconds.
+- `base` model (~140MB): Recommended balance of speed and punctuation accuracy.
+- `small` model (~460MB): Best accuracy for heavy accents or multi-speaker audio.
+
+TIPS:
+1. If you are transcribing a 30+ minute video, select the `tiny` or `base` model 
+   in the upload dropdown.
+2. Once transcribed, remember that the transcript is cached via SHA-256 in 
+   `./cache/`. Any subsequent script generation or re-runs will be INSTANT (0 ms).
+
+--------------------------------------------------------------------------------
+Q9: How do I change the podcast voices or switch languages?
+--------------------------------------------------------------------------------
+RESOLUTION:
+1. In Step 3 (Script Studio), use the "Language" dropdown to choose English, 
+   Spanish, French, German, or Hindi. The script prompt will automatically 
+   instruct Gemini to write natively in that language.
+2. Under "Voice Casting", you can select distinct neural voices for [Host 1] 
+   and [Host 2] (e.g. Guy, Jenny, Christopher, Aria, Ryan, Sonia, etc.).
+3. If you select "One Narrator (Solo Deep-Dive)", the second host dropdown is 
+   automatically hidden and a solo narrative voice is used.
+
+--------------------------------------------------------------------------------
+Q10: Where is the cache stored, and how do I clear it?
+--------------------------------------------------------------------------------
+EXPLANATION:
+All cached transcripts, intermediate chunk summaries, and generated scripts are 
+stored as lightweight JSON files in the `./cache/` directory in your workspace.
+
+TO CLEAR CACHE:
+- From the UI: Click the small trash icon next to the "Cache: X items" pill in 
+  the top navigation header.
+- From Terminal: Delete the contents of the cache folder:
+  `rm -f cache/*.json`
+
+--------------------------------------------------------------------------------
+Q11: Where are the final podcast audio episodes saved?
+--------------------------------------------------------------------------------
+EXPLANATION:
+All generated `.mp3` files are saved locally in the `./outputs/` folder.
+You can:
+- Listen to them directly inside the web browser in Step 4.
+- Click "Download Episode (.MP3)" to save it to your local Downloads folder.
+- Access the files directly in your workspace at `outputs/episode_*.mp3`.
+
+--------------------------------------------------------------------------------
+Q12: Can I run this completely offline without an internet connection?
+--------------------------------------------------------------------------------
+EXPLANATION:
+- **Speech-to-Text (Transcription):** 100% offline! Faster-Whisper runs on your 
+  local CPU / Apple Silicon.
+- **FFmpeg Audio Conversion & Stitching:** 100% offline! Bundled binaries handle 
+  all video extraction and MP3 stitching locally.
+- **Caching:** 100% offline! Stored locally on disk.
+- **Script Generation & Edge-TTS:** These two steps require internet access 
+  (Gemini API for script writing, and Edge-TTS for neural voice synthesis).
+================================================================================

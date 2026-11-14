@@ -1,0 +1,42 @@
+/* Podcast Studio Custom Styling */
+
+.step-nav-item.active {
+  opacity: 1 !important;
+}
+
+.step-nav-item.active span:first-child {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.4);
+}
+
+.step-nav-item.active span:last-child {
+  color: #ffffff !important;
+}
+
+.step-nav-item.completed span:first-child {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+/* Audio Player Custom Dark Styling */
+audio {
+  filter: invert(0.9) hue-rotate(180deg);
+  border-radius: 9999px;
+  outline: none;
+}
+
+/* Custom Scrollbars */
+textarea::-webkit-scrollbar {
+  width: 8px;
+}
+textarea::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+textarea::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+textarea::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
