@@ -2,6 +2,7 @@
 Serves the REST API and modern interactive frontend.
 """
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -13,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from config import BASE_DIR, CACHE_DIR, DEFAULT_VOICES, OUTPUTS_DIR
+from config import BASE_DIR, CACHE_DIR, DEFAULT_VOICES, HEYGEN_API_KEY, OUTPUTS_DIR
 from core.cache import cache_manager
 from core.ingest import (
     detect_source_type,
@@ -29,6 +30,8 @@ from core.model_router import (
 from core.script_engine import estimate_token_count, generate_podcast_script
 from core.transcribe import transcribe_media_file
 from core.tts_engine import generate_podcast_audio_async
+from core.video_engine import create_captioned_video
+from core.heygen_engine import create_heygen_video, get_heygen_catalog
 
 app = FastAPI(title="Podcast Studio", version="1.0.0")
 
@@ -65,9 +68,21 @@ class GenerateScriptRequest(BaseModel):
 
 class SynthesizeAudioRequest(BaseModel):
     script: str
-    voice_host1: str = "en-US-GuyNeural"
-    voice_host2: str = "en-US-JennyNeural"
-    voice_narrator: str = "en-US-ChristopherNeural"
+    voice_host1: str = "en-US-JennyNeural"
+    voice_host2: str = "en-IE-EmilyNeural"
+    voice_narrator: str = "en-US-JennyNeural"
+
+
+class CreateVideoRequest(BaseModel):
+    episode_id: str
+
+
+class CreatePremiumVideoRequest(BaseModel):
+    episode_id: str
+    host1_avatar_id: str
+    host1_voice_id: str
+    host2_avatar_id: str
+    host2_voice_id: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -307,16 +322,66 @@ async def stream_audio(filename: str):
 
 @app.get("/api/download/{filename}")
 async def download_audio(filename: str):
-    """Download MP3 episode file."""
+    """Download generated MP3 or MP4 episode file."""
+    if not re.fullmatch(r"episode_[a-f0-9]{8}(?:_premium)?\.(mp3|mp4)", filename):
+        raise HTTPException(status_code=400, detail="Invalid episode filename.")
     file_path = OUTPUTS_DIR / filename
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Audio episode not found.")
+        raise HTTPException(status_code=404, detail="Episode file not found.")
+    media_type = "video/mp4" if filename.endswith(".mp4") else "audio/mpeg"
     return FileResponse(
         file_path,
-        media_type="audio/mpeg",
+        media_type=media_type,
         filename=f"podcast_{filename}",
-        headers={"Content-Disposition": f'attachment; filename="podcast_{filename}"'}
+        headers={"Cache-Control": "no-store"},
     )
+
+
+@app.post("/api/create-video")
+def create_video(payload: CreateVideoRequest):
+    """Render the current episode's timed dialogue as a captioned MP4."""
+    if not re.fullmatch(r"episode_[a-f0-9]{8}", payload.episode_id):
+        raise HTTPException(status_code=400, detail="Invalid episode ID.")
+    try:
+        return create_captioned_video(payload.episode_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Video rendering failed: {str(e)}")
+
+
+@app.get("/api/premium/catalog")
+async def premium_catalog():
+    """List the public and account-owned HeyGen voices and avatar looks."""
+    if not HEYGEN_API_KEY:
+        raise HTTPException(status_code=503, detail="Premium mode needs HEYGEN_API_KEY in .env. Free local video remains available.")
+    try:
+        return await get_heygen_catalog()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not load the HeyGen catalog: {str(e)}")
+
+
+@app.post("/api/create-premium-video")
+async def create_premium_video(payload: CreatePremiumVideoRequest):
+    """Create an optional credit-based HeyGen multi-host MP4."""
+    if not HEYGEN_API_KEY:
+        raise HTTPException(status_code=503, detail="Premium mode needs HEYGEN_API_KEY in .env. Free local video remains available.")
+    try:
+        return await create_heygen_video(
+            episode_id=payload.episode_id,
+            host1_avatar_id=payload.host1_avatar_id,
+            host1_voice_id=payload.host1_voice_id,
+            host2_avatar_id=payload.host2_avatar_id,
+            host2_voice_id=payload.host2_voice_id,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Premium video generation failed: {str(e)}")
 
 
 @app.post("/api/cache/clear")

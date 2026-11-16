@@ -4,6 +4,13 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
+# Optional local secrets. Keep .env out of Git.
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+fi
+
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
     python3 -m venv .venv

@@ -6,11 +6,13 @@ const state = {
   cacheKey: null,
   transcript: '',
   script: '',
+  episodeId: null,
   apiKey: localStorage.getItem('GEMINI_API_KEY') || '',
   selectedFile: null,
   activeModel: 'gemini-2.0-flash',
   availableModels: [],
   hasEnvApiKey: false,
+  heygenCatalogLoaded: false,
 };
 
 // Initialize on DOM load
@@ -259,6 +261,12 @@ function setupEventListeners() {
   document.getElementById('btn-back-to-step2').addEventListener('click', () => setStep(2));
   document.getElementById('btn-generate-script').addEventListener('click', generateScript);
   document.getElementById('btn-synthesize-audio').addEventListener('click', synthesizeAudio);
+  document.getElementById('btn-create-video').addEventListener('click', createVideo);
+  document.getElementById('btn-toggle-premium').addEventListener('click', () => {
+    document.getElementById('premium-video-panel').classList.toggle('hidden');
+  });
+  document.getElementById('btn-load-heygen-catalog').addEventListener('click', loadHeyGenCatalog);
+  document.getElementById('btn-create-premium-video').addEventListener('click', createPremiumVideo);
 
   // STEP 4 Actions: Create another
   document.getElementById('btn-create-another').addEventListener('click', () => {
@@ -497,6 +505,11 @@ async function synthesizeAudio() {
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Audio synthesis failed');
+    state.episodeId = data.episode_id;
+    document.getElementById('btn-download-video').classList.add('hidden');
+    document.getElementById('btn-download-premium-video').classList.add('hidden');
+    document.getElementById('btn-create-video').classList.remove('hidden');
+    document.querySelector('#btn-create-video span').textContent = 'Create Video (.MP4)';
 
     // Load into Step 4
     document.getElementById('stat-segments').innerText = data.total_segments;
@@ -515,5 +528,107 @@ async function synthesizeAudio() {
     alert(`Audio Synthesis Error: ${err.message}`);
   } finally {
     modal.classList.add('hidden');
+  }
+}
+
+async function createVideo() {
+  if (!state.episodeId) return;
+  const button = document.getElementById('btn-create-video');
+  const label = button.querySelector('span');
+  button.disabled = true;
+  label.textContent = 'Rendering video...';
+
+  try {
+    const res = await fetch('/api/create-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ episode_id: state.episodeId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Video rendering failed');
+
+    const download = document.getElementById('btn-download-video');
+    download.href = data.download_url;
+    download.classList.remove('hidden');
+    label.textContent = `Video ready (${data.file_size_mb} MB)`;
+  } catch (err) {
+    alert(`Video Rendering Error: ${err.message}`);
+    label.textContent = 'Create Video (.MP4)';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadHeyGenCatalog() {
+  const status = document.getElementById('heygen-catalog-status');
+  const button = document.getElementById('btn-load-heygen-catalog');
+  button.disabled = true;
+  status.textContent = 'Loading your HeyGen library…';
+  try {
+    const res = await fetch('/api/premium/catalog');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Could not load premium options');
+
+    const populate = (id, entries, key, format) => {
+      const select = document.getElementById(id);
+      select.replaceChildren();
+      entries.forEach((entry) => {
+        const option = document.createElement('option');
+        option.value = entry[key];
+        option.textContent = format(entry);
+        select.appendChild(option);
+      });
+    };
+    const avatarLabel = (avatar) => `${avatar.name || 'Avatar'}${avatar.avatar_type ? ` · ${avatar.avatar_type.replaceAll('_', ' ')}` : ''}`;
+    const voiceLabel = (voice) => `${voice.name || 'Voice'}${voice.language ? ` · ${voice.language}` : ''}${voice.gender ? ` · ${voice.gender}` : ''}`;
+    ['select-heygen-avatar-host1', 'select-heygen-avatar-host2'].forEach((id) => populate(id, data.avatars, 'id', avatarLabel));
+    ['select-heygen-voice-host1', 'select-heygen-voice-host2'].forEach((id) => populate(id, data.voices, 'voice_id', voiceLabel));
+    if (!data.avatars.length || !data.voices.length) throw new Error('No completed avatars or active voices were returned for this HeyGen account.');
+
+    state.heygenCatalogLoaded = true;
+    document.getElementById('btn-create-premium-video').disabled = false;
+    status.textContent = `${data.avatars.length} avatars and ${data.voices.length} voices loaded.`;
+  } catch (err) {
+    state.heygenCatalogLoaded = false;
+    document.getElementById('btn-create-premium-video').disabled = true;
+    status.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function createPremiumVideo() {
+  if (!state.episodeId || !state.heygenCatalogLoaded) return;
+  const button = document.getElementById('btn-create-premium-video');
+  const previousLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Rendering with HeyGen credits…';
+  document.getElementById('heygen-catalog-status').textContent = 'Rendering can take several minutes. Avoid clicking again while it runs.';
+
+  try {
+    const res = await fetch('/api/create-premium-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        episode_id: state.episodeId,
+        host1_avatar_id: document.getElementById('select-heygen-avatar-host1').value,
+        host1_voice_id: document.getElementById('select-heygen-voice-host1').value,
+        host2_avatar_id: document.getElementById('select-heygen-avatar-host2').value,
+        host2_voice_id: document.getElementById('select-heygen-voice-host2').value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Premium video generation failed');
+
+    const download = document.getElementById('btn-download-premium-video');
+    download.href = data.download_url;
+    download.classList.remove('hidden');
+    document.getElementById('heygen-catalog-status').textContent = `Premium video ready · ${data.file_size_mb} MB · ${data.scene_count} scenes.`;
+    button.textContent = 'Render another premium video with credits';
+  } catch (err) {
+    document.getElementById('heygen-catalog-status').textContent = err.message;
+    button.textContent = previousLabel;
+  } finally {
+    button.disabled = false;
   }
 }

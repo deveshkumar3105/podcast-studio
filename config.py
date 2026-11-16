@@ -5,6 +5,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 CACHE_DIR = BASE_DIR / "cache"
 OUTPUTS_DIR = BASE_DIR / "outputs"
+HEYGEN_API_KEY = os.environ.get("HEYGEN_API_KEY", "").strip()
 CACHE_DIR.mkdir(exist_ok=True)
 OUTPUTS_DIR.mkdir(exist_ok=True)
 
@@ -20,9 +21,9 @@ DEFAULT_GEMINI_MODELS = [
 # Voice presets for Edge-TTS
 DEFAULT_VOICES = {
     "en": {
-        "host1": {"name": "Guy (US, Engaging/Energetic)", "id": "en-US-GuyNeural"},
-        "host2": {"name": "Jenny (US, Conversational/Warm)", "id": "en-US-JennyNeural"},
-        "narrator": {"name": "Christopher (US, Authoritative/Storyteller)", "id": "en-US-ChristopherNeural"},
+        "host1": {"name": "Jenny (US, Warm/Natural)", "id": "en-US-JennyNeural"},
+        "host2": {"name": "Emily (Ireland, Conversational/Clear)", "id": "en-IE-EmilyNeural"},
+        "narrator": {"name": "Jenny (US, Warm/Storyteller)", "id": "en-US-JennyNeural"},
     },
     "es": {
         "host1": {"name": "Alvaro (Spain, Dynamic)", "id": "es-ES-AlvaroNeural"},

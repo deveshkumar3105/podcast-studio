@@ -2,14 +2,17 @@
 Parses multi-speaker dialogue scripts and concatenates audio tracks using bundled FFmpeg.
 """
 import asyncio
+import json
 import os
 import re
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import edge_tts
+from edge_tts.exceptions import NoAudioReceived
 from config import DEFAULT_VOICES, OUTPUTS_DIR
 from core.ingest import get_ffmpeg_binary
 
@@ -70,10 +73,36 @@ def parse_script_dialogue(script_text: str) -> List[Dict[str, str]]:
     return segments
 
 
+VOICE_DELIVERY = {
+    # Distinct, restrained delivery presets for a less uniform two-host sound.
+    "en-US-JennyNeural": {"rate": "-3%", "pitch": "-1Hz"},
+    "en-US-ChristopherNeural": {"rate": "-8%", "pitch": "-5Hz"},
+    "en-IE-EmilyNeural": {"rate": "-2%", "pitch": "+1Hz"},
+    "en-IE-ConnorNeural": {"rate": "-3%", "pitch": "-2Hz"},
+}
+
+
 async def synthesize_segment(text: str, voice: str, output_path: str) -> None:
-    """Generate audio for a single dialogue line using Edge-TTS."""
-    communicate = edge_tts.Communicate(text=text, voice=voice)
-    await communicate.save(output_path)
+    """Generate one dialogue clip, retrying transient empty Edge-TTS responses."""
+    delivery = VOICE_DELIVERY.get(voice, {})
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            Path(output_path).unlink(missing_ok=True)
+            communicate = edge_tts.Communicate(text=text, voice=voice, **delivery)
+            await communicate.save(output_path)
+            if not Path(output_path).is_file() or Path(output_path).stat().st_size < 128:
+                raise NoAudioReceived("Edge-TTS returned an empty audio file.")
+            return
+        except NoAudioReceived as exc:
+            Path(output_path).unlink(missing_ok=True)
+            if attempt == max_attempts:
+                raise RuntimeError(
+                    f"Microsoft Edge TTS returned no audio after {max_attempts} attempts "
+                    f"for voice {voice}. Check internet access and try again; the speech "
+                    "service may be temporarily unavailable."
+                ) from exc
+            await asyncio.sleep(1.5 * attempt)
 
 
 def concatenate_audio_files(input_files: List[str], output_file: str) -> None:
@@ -114,11 +143,28 @@ def concatenate_audio_files(input_files: List[str], output_file: str) -> None:
                 pass
 
 
+def get_audio_duration(path: str) -> float:
+    """Read an audio file duration from FFmpeg's stream metadata."""
+    ffmpeg_exe = get_ffmpeg_binary()
+    result = subprocess.run(
+        [ffmpeg_exe, "-hide_banner", "-i", path, "-f", "null", "-"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    output = result.stderr.decode("utf-8", errors="replace")
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
+    if not match:
+        raise RuntimeError(f"Could not determine audio duration for {Path(path).name}.")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
 async def generate_podcast_audio_async(
     script_text: str,
-    voice_host1: str = "en-US-GuyNeural",
-    voice_host2: str = "en-US-JennyNeural",
-    voice_narrator: str = "en-US-ChristopherNeural",
+    voice_host1: str = "en-US-JennyNeural",
+    voice_host2: str = "en-IE-EmilyNeural",
+    voice_narrator: str = "en-US-JennyNeural",
     episode_title: Optional[str] = None
 ) -> Dict[str, Any]:
     """Parse dialogue lines, synthesize speaker audio segments with Edge-TTS,
@@ -130,6 +176,7 @@ async def generate_podcast_audio_async(
 
     episode_id = f"episode_{uuid.uuid4().hex[:8]}"
     final_output_path = OUTPUTS_DIR / f"{episode_id}.mp3"
+    timeline = []
     
     temp_dir = tempfile.mkdtemp(prefix="podcast_tts_")
     clip_files = []
@@ -155,14 +202,32 @@ async def generate_podcast_audio_async(
                 speaker_stats["Narrator"] += 1
 
             clip_path = os.path.join(temp_dir, f"clip_{idx:04d}.mp3")
-            await synthesize_segment(text, voice, clip_path)
+            # Track the path before synthesis so any partial file is cleaned up
+            # if the upstream service or local network fails mid-request.
             clip_files.append(clip_path)
+            try:
+                await synthesize_segment(text, voice, clip_path)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Audio synthesis failed for {speaker} using {voice} "
+                    f"(dialogue segment {idx + 1} of {len(segments)}): {exc}"
+                ) from exc
+            timeline.append({
+                "speaker": speaker,
+                "text": text,
+                "duration": get_audio_duration(clip_path),
+            })
 
         if not clip_files:
             raise ValueError("No audio segments were successfully synthesized.")
 
         # Stitch all clips together into master mp3
         concatenate_audio_files(clip_files, str(final_output_path))
+        metadata_path = OUTPUTS_DIR / f"{episode_id}.json"
+        metadata_path.write_text(
+            json.dumps({"segments": timeline}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         
         file_size_mb = round(final_output_path.stat().st_size / (1024 * 1024), 2)
         
@@ -173,6 +238,7 @@ async def generate_podcast_audio_async(
             "file_path": str(final_output_path),
             "download_url": f"/api/download/{episode_id}.mp3",
             "stream_url": f"/api/audio/{episode_id}.mp3",
+            "episode_id": episode_id,
             "file_size_mb": file_size_mb,
             "total_segments": len(clip_files),
             "speaker_breakdown": speaker_stats
@@ -195,9 +261,9 @@ async def generate_podcast_audio_async(
 
 def generate_podcast_audio(
     script_text: str,
-    voice_host1: str = "en-US-GuyNeural",
-    voice_host2: str = "en-US-JennyNeural",
-    voice_narrator: str = "en-US-ChristopherNeural"
+    voice_host1: str = "en-US-JennyNeural",
+    voice_host2: str = "en-IE-EmilyNeural",
+    voice_narrator: str = "en-US-JennyNeural"
 ) -> Dict[str, Any]:
     """Synchronous wrapper for generate_podcast_audio_async."""
     return asyncio.run(generate_podcast_audio_async(

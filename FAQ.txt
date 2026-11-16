@@ -15,19 +15,24 @@ Q1: Why did I see "[Errno 8] nodename nor servname provided, or not known"
     during script generation?
 --------------------------------------------------------------------------------
 CAUSE:
-This is a DNS lookup failure. It happens when the Uvicorn server runs inside a 
-sandboxed environment (such as an IDE agent sandbox or container without 
-network bridging) where outbound DNS resolution and internet access are blocked. 
-When the server tried to contact Google Gemini API at 
-`generativelanguage.googleapis.com` or Edge-TTS, the local resolver returned 
-Errno 8.
+This is a DNS lookup failure. The process could not resolve a hostname such as
+`generativelanguage.googleapis.com`. Common causes include a restricted coding
+agent sandbox, a disconnected network, VPN or proxy configuration, or a DNS
+resolver problem. A browser or web-search tool may have network access even when
+the shell process running the app does not; they are separate execution paths.
 
 RESOLUTION:
-1. When launched via agent tools, the server process must run with network 
-   access enabled (BypassSandbox: true).
-2. For end users: Always launch the server using `./run_studio.sh` in your 
-   regular Mac/Linux Terminal. Native terminal processes have standard network 
-   access and never suffer from sandbox DNS blocks.
+1. Check that the Mac is online and that a normal Terminal can resolve the host:
+   `nslookup generativelanguage.googleapis.com`
+2. If it fails only inside a coding agent, approve the specific network-enabled
+   command when the agent presents its permission prompt, or configure that
+   agent's execution environment to allow outbound access. Organization policy
+   or a managed sandbox administrator may control this setting.
+3. To run the app outside the agent sandbox, open macOS Terminal, `cd` to this
+   project, and run `./run_studio.sh`. This uses the Mac's normal network path;
+   a VPN, firewall, proxy, or DNS problem can still block access.
+4. If ordinary Terminal also fails, check VPN/proxy settings, DNS, and firewall
+   rules, then retry the lookup. Do not add API keys to shell commands or logs.
 
 --------------------------------------------------------------------------------
 Q2: What caused "TypeError: open() got an unexpected keyword argument 'metadata_errors'"
@@ -163,10 +168,15 @@ RESOLUTION:
 1. In Step 3 (Script Studio), use the "Language" dropdown to choose English, 
    Spanish, French, German, or Hindi. The script prompt will automatically 
    instruct Gemini to write natively in that language.
-2. Under "Voice Casting", you can select distinct neural voices for [Host 1] 
-   and [Host 2] (e.g. Guy, Jenny, Christopher, Aria, Ryan, Sonia, etc.).
+2. Under "Voice Casting", choose a voice separately for [Host 1] and [Host 2].
+   The free local video options are feminine voices (Jenny, Emily, Aria, Sonia,
+   and Natasha) to match the two women shown in the bundled studio footage.
+   Voice rate and pitch adjustments help distinguish the hosts.
 3. If you select "One Narrator (Solo Deep-Dive)", the second host dropdown is 
    automatically hidden and a solo narrative voice is used.
+4. The voice list uses Edge-TTS and does not require a separate API key. The app
+   does not include exact actor or movie-character voice copies such as Jarvis,
+   Ultron, or Friday.
 
 --------------------------------------------------------------------------------
 Q10: Where is the cache stored, and how do I clear it?
@@ -182,24 +192,206 @@ TO CLEAR CACHE:
   `rm -f cache/*.json`
 
 --------------------------------------------------------------------------------
-Q11: Where are the final podcast audio episodes saved?
+Q11: Where are the final podcast audio and video episodes saved?
 --------------------------------------------------------------------------------
 EXPLANATION:
-All generated `.mp3` files are saved locally in the `./outputs/` folder.
+All generated media is saved locally in the `./outputs/` folder.
 You can:
-- Listen to them directly inside the web browser in Step 4.
-- Click "Download Episode (.MP3)" to save it to your local Downloads folder.
-- Access the files directly in your workspace at `outputs/episode_*.mp3`.
+- Listen to MP3 episodes directly in the browser in Step 4.
+- Click "Download Episode (.MP3)" for the audio file.
+- Click "Create Video (.MP4)" for a free, locally rendered two-host video,
+  then download it from the result screen.
+- Find local files at `outputs/episode_*.mp3` and `outputs/episode_*.mp4`.
+  Premium HeyGen videos use the `_premium.mp4` suffix.
 
 --------------------------------------------------------------------------------
-Q12: Can I run this completely offline without an internet connection?
+Q12: What is the difference between free local video and premium video?
+--------------------------------------------------------------------------------
+FREE LOCAL VIDEO:
+The default "Create Video (.MP4)" option renders on your Mac using FFmpeg and
+Pillow. It uses bundled free-use footage showing two podcast hosts talking at
+microphones, loops the footage for longer episodes, and overlays timed dialogue
+captions and speaker labels. The stock hosts are illustrative; their lips are
+not synchronized to the generated dialogue. Rendering uses no avatar service,
+API key, or paid credits. The footage source and license are listed in
+`static/media/ASSET_CREDITS.txt`.
+
+OPTIONAL PREMIUM VIDEO:
+Expand "Optional: premium voices & avatars (HeyGen credits)" on the result page.
+After configuring a HeyGen API key, load the public and account-owned voice and
+avatar lists, choose an avatar and voice for each host, then click "Render
+premium video with credits". The script dialogue is sent to HeyGen; that service
+creates the avatar video and charges the connected account according to its
+current API rates. Credits are not used by the local video button or by loading
+the catalog. Check current HeyGen rates before starting a premium render.
+
+Premium Studio renders support up to 50 speaker-turn scenes per video. If the
+script exceeds this limit, shorten it before premium rendering.
+
+--------------------------------------------------------------------------------
+Q13: How do I enable the optional HeyGen voices and avatars?
+--------------------------------------------------------------------------------
+RESOLUTION:
+1. In Terminal, from the project folder, copy the example configuration:
+   `cp .env.example .env`
+2. Open `.env` in a text editor and set your HeyGen API key:
+   `HEYGEN_API_KEY=your_key_here`
+3. Save the file and restart Podcast Studio with `./run_studio.sh`.
+4. In the result screen, expand the premium panel and click "Load my HeyGen
+   voices and avatars". Then choose the two hosts and render when ready.
+
+The `.env` file contains a private API key and is excluded by `.gitignore`; do
+not commit or share it. `.env.example` is only a template and does not contain a
+working key. Leave the key unset to use the free local video option.
+
+If the catalog button reports that premium mode is not configured, confirm the
+key is in the root project `.env` file and restart the app. The server reads the
+key at startup.
+
+--------------------------------------------------------------------------------
+Q14: Why is a downloaded MP4 tiny or showing 00:00 duration?
+--------------------------------------------------------------------------------
+CAUSE:
+An earlier or interrupted download may contain only the MP4 header. It is not
+the completed video, even if the UI previously displayed a larger render size.
+
+RESOLUTION:
+1. Wait until the render has finished and the download link appears.
+2. Download the video again from the result screen. Completed local renders are
+   published only after FFmpeg finishes writing the file.
+3. If the new download is still incomplete, restart the app and render the video
+   again. For premium output, check the HeyGen dashboard before retrying so you
+   do not submit a second credit-consuming render while the first is still running.
+
+--------------------------------------------------------------------------------
+Q15: Which Podcast Studio features need an internet connection?
 --------------------------------------------------------------------------------
 EXPLANATION:
-- **Speech-to-Text (Transcription):** 100% offline! Faster-Whisper runs on your 
-  local CPU / Apple Silicon.
-- **FFmpeg Audio Conversion & Stitching:** 100% offline! Bundled binaries handle 
-  all video extraction and MP3 stitching locally.
-- **Caching:** 100% offline! Stored locally on disk.
-- **Script Generation & Edge-TTS:** These two steps require internet access 
-  (Gemini API for script writing, and Edge-TTS for neural voice synthesis).
+- **Speech-to-text:** Faster-Whisper runs locally after its model files have
+  downloaded once. The first run may need internet to fetch those files.
+- **Transcript cache and FFmpeg rendering:** Run locally. Free video uses the
+  bundled studio clip and existing MP3, so video rendering itself needs no web
+  service or API key.
+- **Script generation:** Needs internet to call the Google Gemini API. Enter the
+  Gemini key in the app's key settings; it is not the HeyGen key in `.env`.
+- **Edge-TTS voice generation:** Needs internet because speech is synthesized
+  through Microsoft's Edge TTS service.
+- **URL ingestion:** Needs internet to retrieve public page text or YouTube
+  captions. Audio extraction from a remote URL also needs network access.
+- **Premium HeyGen video:** Needs internet and a configured HeyGen API key;
+  renders use the account's credits.
+- **Web page appearance:** Tailwind and Lucide are loaded from public CDNs in
+  the browser, so an offline browser may show an unstyled interface.
+
+--------------------------------------------------------------------------------
+Q16: What is the sandbox, and why can the app have no internet inside it?
+--------------------------------------------------------------------------------
+EXPLANATION:
+A sandbox is an isolated environment used to run commands and edit project files
+with controlled access to the filesystem, network, and credentials. This project
+folder is writable to the coding agent, but outbound network access can still be
+restricted separately. A DNS error means the process could not resolve a host;
+it does not necessarily mean your Mac is offline.
+
+There are separate network paths:
+- A web-search/browser tool can reach public sites even if a shell command in the
+  sandbox cannot. Browsing a site does not give the local app process access.
+- The app runs as a local Python process. Its Gemini, Edge-TTS, URL ingestion,
+  and first-time dependency downloads require that process to reach their hosts.
+- Your normal macOS Terminal runs outside the coding-agent sandbox unless you
+  deliberately start the app from a container or another restricted environment.
+
+TO ALLOW NETWORK ACCESS:
+1. In the ChatGPT desktop app, use the permissions control below the composer.
+   Choose "Ask for approval" and approve a specific network command when asked.
+   In the Codex IDE extension, use the permissions control below the composer;
+   in Codex CLI, enter `/permissions` to choose an active profile.
+2. In ChatGPT Work, when this setting is available, open Settings > Data
+   controls > Work network access and turn on "Allow public internet access".
+   This controls code and shell access; web search, plugins, and remote browser
+   have separate controls. A managed policy may hide or lock the setting.
+3. If the prompt or setting is unavailable, ask the environment administrator
+   to allow the required destinations. Hosted environments can be enabled,
+   disabled, or restricted to an explicit host allowlist. After changing a
+   network policy, stop the current shell command and start a new one so the
+   refreshed environment applies.
+4. To run the app using your Mac's normal network, open Terminal, change to the
+   project folder, and run `./run_studio.sh`. Open `http://127.0.0.1:8000` in a
+   browser. The server binds only to your own Mac. A VPN, firewall, proxy, or DNS
+   issue can still block outbound calls.
+5. To check DNS from Terminal, run `nslookup generativelanguage.googleapis.com`.
+   If it fails outside the agent too, check your Mac's internet connection,
+   VPN/proxy, firewall, and DNS settings.
+
+The network control is separate from the filesystem sandbox and approval policy:
+approving a command does not automatically change the permanent network policy.
+See the current [Codex sandbox guide](https://developers.openai.com/codex/sandboxing)
+for the UI and CLI options supported by your client version.
+
+WEB ACCESS AND WHEN IT IS NEEDED:
+- In this coding conversation, web access is provided by the separate web
+  search/browser tool. Use it for current facts, project documentation, or a
+  public reference URL. Shell network permission is a different capability.
+- In Podcast Studio, the app's browser page is local, but script generation,
+  neural speech, public URL ingestion, YouTube captions, and remote audio
+  extraction need internet access from the running Python server.
+- Once Faster-Whisper models are downloaded, transcription can run locally.
+  Cached transcripts and video rendering from an existing episode can also run
+  offline.
+
+--------------------------------------------------------------------------------
+Q17: What was downloaded, configured, and built for this project?
+--------------------------------------------------------------------------------
+BUILD NOTES:
+1. `./run_studio.sh` creates `.venv` and installs Python dependencies from
+   `requirements.txt` on first setup, then starts FastAPI/Uvicorn at
+   `http://127.0.0.1:8000`. Dependency installation needs package-index access.
+2. Gemini creates the podcast dialogue using the key entered in the app. This is
+   an external API request. `.env.example` is a template for the optional
+   `HEYGEN_API_KEY`; copy it to `.env` only if enabling paid HeyGen video:
+   `cp .env.example .env`. The `.env` file is ignored by Git and must stay
+   private. `.env.example` is not a real key and does not enable Gemini.
+3. Edge-TTS synthesizes the selected free voices over the internet. FFmpeg then
+   stitches the resulting audio locally.
+4. Faster-Whisper transcribes uploaded media locally after its model is present.
+   YouTube captions or public page text can be fetched online before scripting.
+5. Free video uses the bundled, compressed Pexels footage documented in
+   `static/media/ASSET_CREDITS.txt`. FFmpeg loops the silent clip and combines it
+   with the existing episode audio and timed captions. The footage is free to
+   reuse under its license; it does not synchronize the hosts' lips to speech.
+6. Optional HeyGen rendering sends dialogue to HeyGen and consumes the connected
+   account's credits. The local free video path does not call HeyGen.
+
+To make code or asset changes take effect in a running instance, stop the
+server with Ctrl+C and start it again using `./run_studio.sh`. Use a regular
+Terminal if the agent sandbox cannot reach the network; the sandbox and the
+Mac's normal shell have separate network permissions.
+
+--------------------------------------------------------------------------------
+Q18: Why did audio synthesis fail with "No audio was received"?
+--------------------------------------------------------------------------------
+CAUSE:
+This message is raised by the Edge-TTS client when its speech request completes
+without any audio data. It can happen during a temporary Microsoft speech
+service interruption, a dropped/restricted network connection, or when a voice
+or text segment is rejected upstream. Recent reports in the Edge-TTS project
+describe intermittent failures with otherwise valid requests, so this message
+alone does not prove that the script or voice selection is wrong:
+https://github.com/rany2/edge-tts/issues/473
+
+HOW THE APP HANDLES IT:
+Each dialogue segment is now attempted up to three times, with a short backoff
+between attempts. If the retries still return no audio, the error identifies
+the host, voice, and segment number. The app only publishes an episode after all
+clips have been generated and stitched successfully.
+
+IF IT KEEPS HAPPENING:
+1. Confirm the Mac running Podcast Studio has internet access. Web search in the
+   coding agent does not prove that the app's Python process can reach Edge-TTS.
+2. Retry once after a short wait. If the same voice keeps failing, select another
+   free voice and synthesize again.
+3. If only one segment fails repeatedly, shorten that spoken turn and remove
+   unusual formatting or characters, then retry.
+4. Restart the app with `./run_studio.sh` and retry. If the error includes a
+   host/voice/segment, include those details when investigating the failure.
 ================================================================================

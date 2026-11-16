@@ -1,6 +1,6 @@
 # 🎙️ Podcast Studio
 
-**Podcast Studio** is a cost-efficient, privacy-respecting application that transforms **pasted text**, **uploaded video/audio**, or **video links** into downloadable, broadcast-quality podcast episodes.
+**Podcast Studio** is a cost-efficient, privacy-respecting application that transforms **pasted text**, **uploaded video/audio**, or **video links** into downloadable podcast episodes in MP3 audio or captioned MP4 video formats.
 
 Built with a local-first philosophy, it maximizes free and open-source tools (Edge-TTS, Faster-Whisper, ImageIO-FFmpeg) and pairs them with Google Gemini API for intelligent, grounded podcast scripting with zero redundant token waste.
 
@@ -25,11 +25,11 @@ Built with a local-first philosophy, it maximizes free and open-source tools (Ed
 | **Frontend** | HTML5 + Tailwind CSS + Alpine/Vanilla JS | Modern dark-mode studio UI, live token estimator, side-by-side editable review boxes, interactive audio player. |
 | **Backend API** | FastAPI + Uvicorn | Lightweight, high-performance async Python backend. |
 | **Speech-to-Text (STT)** | `faster-whisper` (CTranslate2) | 100% on-device local transcription for uploaded files. Zero audio sent to external servers. |
-| **Audio Processing** | `imageio-ffmpeg` | Bundles static FFmpeg binaries automatically; extracts audio from MP4/MOV/MKV and stitches MP3 dialogues without needing system package installs. |
+| **Media Processing** | `imageio-ffmpeg` + Pillow | Bundles FFmpeg for audio extraction, MP3 stitching, and captioned 16:9 MP4 rendering over free-use two-host podcast footage. |
 | **Captions Ingest** | `youtube-transcript-api` | Probes YouTube for official captions first (0 MB video download, instant, free, respects platform terms). |
 | **Article Extractor** | `trafilatura` | Strips ads, navbars, and boilerplate from public article links with 0 AI tokens. |
 | **Script Generation** | Google Gemini API (`google-genai`) | High-speed, long-context grounded generation with free-tier support. |
-| **Text-to-Speech (TTS)** | `edge-tts` | Studio-quality neural multi-voice synthesis (Guy, Jenny, Christopher, etc.) with 0 API keys and zero cost. |
+| **Text-to-Speech (TTS)** | `edge-tts` | No-key neural voices; free-video voice choices are feminine voices to match the two women shown in its bundled studio footage. Empty responses are retried up to three times. |
 
 ---
 
@@ -48,6 +48,10 @@ Built with a local-first philosophy, it maximizes free and open-source tools (Ed
    - **Two Hosts:** Conversational banter between `[Host 1]` (curious/engaging) and `[Host 2]` (expert/analytical).
    - **Solo Narrator:** Immersive narrative storytelling style.
    - Natural 350ms conversational pauses and seamless FFmpeg audio stitching.
+
+4. **Video Episode Export:**
+   - The default option renders a 16:9 MP4 locally with timed captions over bundled footage of two women hosts. Free voice choices are feminine to match the footage. It is free and does not require an avatar service.
+   - Optional HeyGen mode uses the voices and avatar looks available in the configured HeyGen account. It sends dialogue scenes to HeyGen and consumes that account's API credits only after the premium render button is clicked.
 
 ---
 
@@ -111,6 +115,12 @@ export GEMINI_API_KEY="your-gemini-api-key"
 ```
 *(Get a free key at [Google AI Studio](https://aistudio.google.com/app/apikey))*
 
+### Optional: Premium Avatar Video
+
+Free local video is the default: it uses bundled, free-use footage of two people talking at podcast microphones, loops the footage as needed, and overlays the generated dialogue as timed captions and speaker labels. The people are illustrative stock hosts, so their mouth movements are not synchronized to the generated audio. This render runs locally without a paid account or API key. Footage credit and license details are in `static/media/ASSET_CREDITS.txt`.
+
+To enable premium avatar and voice choices, copy `.env.example` to `.env`, add your HeyGen API key, and restart the app. The UI can then load public and account-owned HeyGen avatars and voices. Premium rendering sends the selected dialogue to HeyGen and uses API credits based on its current pricing; review that pricing before clicking the premium render button.
+
 ---
 
 ## 🔄 Core Workflow
@@ -130,7 +140,8 @@ export GEMINI_API_KEY="your-gemini-api-key"
 [ Step 4: Listen & Download ]
       Edge-TTS synthesizes dialogue segments
       FFmpeg stitches into master MP3
-      Stream in browser player or download episode
+      Stream in browser player or download MP3
+      Optionally render timed captions over bundled two-host footage into MP4
 ```
 
 ---
@@ -143,6 +154,7 @@ bu/
 ├── config.py               # Voice mappings, model fallback list, thresholds
 ├── run_studio.sh           # One-click executable launch script
 ├── requirements.txt        # Pinned Python package dependencies
+├── .env.example            # Optional local API key configuration template
 ├── FAQ.txt                 # Detailed FAQ, resolved bugs, and troubleshooting
 ├── README.md               # System documentation (this file)
 │
@@ -152,7 +164,8 @@ bu/
 │   ├── model_router.py     # Dynamic Gemini model discovery & 429 auto-failover
 │   ├── script_engine.py    # Grounded podcast prompt builder & chunking engine
 │   ├── transcribe.py       # faster-whisper local STT with PyAV compatibility
-│   └── tts_engine.py       # Multi-voice Edge-TTS synthesizer & audio stitcher
+│   ├── tts_engine.py       # Multi-voice Edge-TTS synthesizer & audio stitcher
+│   └── video_engine.py     # Two-host studio footage and timed caption renderer
 │
 ├── static/
 │   ├── index.html          # Clean dark-mode responsive web studio
@@ -160,7 +173,7 @@ bu/
 │   └── app.js              # Client-side state, API calls, and event wiring
 │
 ├── cache/                  # Disk cache directory for transcripts and scripts
-└── outputs/                # Generated .mp3 podcast episodes
+└── outputs/                # Generated .mp3/.mp4 podcast episodes
 ```
 
 ---

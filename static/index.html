@@ -398,21 +398,23 @@
 
             <!-- Voice Customizer Options -->
             <div class="border-t border-gray-700/60 pt-4">
-              <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Voice Casting (Edge-TTS Studio Quality)</h4>
+              <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Voice Casting (Edge-TTS)</h4>
+              <p class="text-[11px] text-gray-500 mb-3">Free voices are feminine to match the two hosts shown in the video.</p>
               <div id="voice-options-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs text-studio-host1 font-semibold mb-1">[Host 1] Voice (Main / Inquisitive)</label>
                   <select id="select-voice-host1" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white">
-                    <option value="en-US-GuyNeural" selected>Guy (US, Engaging & Energetic)</option>
-                    <option value="en-US-ChristopherNeural">Christopher (US, Narrative)</option>
-                    <option value="en-GB-RyanNeural">Ryan (UK, Crisp & Clear)</option>
-                    <option value="en-AU-WilliamNeural">William (Australia, Friendly)</option>
+                    <option value="en-US-JennyNeural" selected>Jenny (US, warm & natural)</option>
+                    <option value="en-US-AriaNeural">Aria (US, expressive)</option>
+                    <option value="en-GB-SoniaNeural">Sonia (UK, articulate)</option>
+                    <option value="en-AU-NatashaNeural">Natasha (Australia, engaging)</option>
                   </select>
                 </div>
                 <div>
                   <label class="block text-xs text-studio-host2 font-semibold mb-1">[Host 2] Voice (Expert / Analytical)</label>
                   <select id="select-voice-host2" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white">
-                    <option value="en-US-JennyNeural" selected>Jenny (US, Warm & Natural)</option>
+                    <option value="en-IE-EmilyNeural" selected>Emily (Ireland, clear & conversational)</option>
+                    <option value="en-US-JennyNeural">Jenny (US, warm & natural)</option>
                     <option value="en-US-AriaNeural">Aria (US, Expressive)</option>
                     <option value="en-GB-SoniaNeural">Sonia (UK, Articulate)</option>
                     <option value="en-AU-NatashaNeural">Natasha (Australia, Engaging)</option>
@@ -445,7 +447,7 @@
             <i data-lucide="disc" class="w-5 h-5 text-indigo-400 animate-spin"></i>
             <span>Your Podcast Episode is Ready!</span>
           </h2>
-          <p class="text-xs text-gray-400 mt-1">Preview the generated audio track or download the standalone MP3.</p>
+          <p class="text-xs text-gray-400 mt-1">Preview the audio, download the MP3, or render a two-host podcast video with captions.</p>
         </div>
 
         <div class="p-8 space-y-6 text-center">
@@ -477,10 +479,53 @@
               <i data-lucide="download" class="w-4 h-4"></i>
               <span>Download Episode (.MP3)</span>
             </a>
+            <button id="btn-create-video" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl transition flex items-center justify-center space-x-2">
+              <i data-lucide="film" class="w-4 h-4"></i>
+              <span>Create Video (.MP4)</span>
+            </button>
+            <a id="btn-download-video" href="#" download class="hidden w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-6 rounded-xl transition items-center justify-center space-x-2">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>Download Video</span>
+            </a>
+            <a id="btn-download-premium-video" href="#" download class="hidden w-full sm:w-auto bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-6 rounded-xl transition items-center justify-center space-x-2">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>Download Premium Video</span>
+            </a>
             <button id="btn-create-another" class="w-full sm:w-auto bg-studio-700 hover:bg-studio-600 text-gray-200 font-semibold py-3 px-6 rounded-xl border border-gray-600 transition flex items-center justify-center space-x-2">
               <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
               <span>Create Another Episode</span>
             </button>
+          </div>
+
+          <div class="max-w-2xl mx-auto border-t border-gray-700/60 pt-5 text-left">
+            <button id="btn-toggle-premium" class="text-sm text-amber-300 hover:text-amber-200 font-semibold">
+              Optional: premium voices & avatars (HeyGen credits)
+            </button>
+            <p class="text-xs text-gray-400 mt-1">Free local video remains the default. Premium rendering sends each speaker turn to HeyGen and uses credits from your account.</p>
+            <div id="premium-video-panel" class="hidden mt-4 space-y-4 rounded-xl border border-amber-700/40 bg-gray-900/60 p-4">
+              <p class="text-xs text-gray-300">Add <code>HEYGEN_API_KEY</code> to your local <code>.env</code> file and restart the app. Credit use depends on video length and avatar engine; check current rates before rendering.</p>
+              <button id="btn-load-heygen-catalog" class="bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold rounded-lg px-4 py-2">Load my HeyGen voices and avatars</button>
+              <span id="heygen-catalog-status" class="text-xs text-gray-400"></span>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-3">
+                  <label class="block text-xs text-studio-host1 font-semibold">Host 1 avatar
+                    <select id="select-heygen-avatar-host1" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white"></select>
+                  </label>
+                  <label class="block text-xs text-studio-host1 font-semibold">Host 1 premium voice
+                    <select id="select-heygen-voice-host1" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white"></select>
+                  </label>
+                </div>
+                <div class="space-y-3">
+                  <label class="block text-xs text-studio-host2 font-semibold">Host 2 avatar
+                    <select id="select-heygen-avatar-host2" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white"></select>
+                  </label>
+                  <label class="block text-xs text-studio-host2 font-semibold">Host 2 premium voice
+                    <select id="select-heygen-voice-host2" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white"></select>
+                  </label>
+                </div>
+              </div>
+              <button id="btn-create-premium-video" disabled class="disabled:opacity-40 disabled:cursor-not-allowed bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold rounded-lg px-5 py-3">Render premium video with credits</button>
+            </div>
           </div>
         </div>
       </div>
